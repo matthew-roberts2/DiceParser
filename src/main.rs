@@ -9,4 +9,6 @@ fn main() {
     let parse_tree = parse(expression).expect("Didn't parse right!");
 
     println!("{}", print(&parse_tree));
+
+    println!("{}", parse_tree.evaluate().expect("Failed to evaluate parse tree"));
 }

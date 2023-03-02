@@ -1,6 +1,8 @@
 use std::iter::Peekable;
+use rand::Rng;
 
-#[derive(Debug, Clone)]
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Terminal {
     Integer(u32),
     Dice,
@@ -22,6 +24,92 @@ impl ParseNode {
         ParseNode {
             children: Vec::new(),
             entry: Terminal::Dice,
+        }
+    }
+
+    fn find_largest_index(vec: &Vec<u32>) -> usize {
+        vec.iter().enumerate().max_by(|(_, &a),(_, &b)| a.cmp(&b)).map(|(index, _)| index).expect("Could not find max")
+    }
+
+    fn find_smallest_index(vec: &Vec<u32>) -> usize {
+        vec.iter().enumerate().min_by(|(_, &a),(_, &b)| a.cmp(&b)).map(|(index, _)| index).expect("Could not find max")
+    }
+
+    fn remove_n<F>(vec: &Vec<u32>, n: u32, matcher: F) -> Vec<u32> where F: Fn(&Vec<u32>) -> usize {
+        let mut results = vec.clone();
+        for _ in 0..n {
+            results.remove(matcher(&results));
+        }
+        results
+    }
+
+    pub fn evaluate(&self) -> Result<u32, String> {
+        match self.entry {
+            Terminal::Integer(n) => {
+                Ok(n)
+            }
+            Terminal::Add => {
+                let left_child = self.children.get(0).expect("Add should have had 2 children");
+                let right_child = self.children.get(1).expect("Add should have had 2 children");
+                Ok(left_child.evaluate()? + right_child.evaluate()?)
+            }
+            Terminal::Subtract => {
+                let left_child = self.children.get(0).expect("Subtract should have had 2 children");
+                let right_child = self.children.get(1).expect("Subtract should have had 2 children");
+                Ok(left_child.evaluate()? - right_child.evaluate()?)
+            }
+            Terminal::Dice => {
+                let rolls = self.evaluate_as_dice().expect("Failed to evaluate dice");
+                Ok(rolls.iter().sum())
+            }
+            Terminal::Remove => {
+                let dice_results = self.children.get(0).expect("Expected remove to have 3 children").evaluate_as_dice().expect("Failed to evaluate first removal child as dice");
+                if let Terminal::Integer(count) = self.children.get(1).expect("Expected remove to have 3 children").entry {
+                    let direction = &self.children.get(2).expect("Expected remove to have 3 children").entry;
+                    let removal_fn: fn(&Vec<u32>) -> usize;
+                    match direction {
+                        Terminal::Lower => {
+                            removal_fn = ParseNode::find_smallest_index
+                        }
+                        Terminal::Higher => {
+                            removal_fn = ParseNode::find_largest_index
+                        }
+                        _ => {
+                            return Err(format!("Expected remove's 3rd child to be a direction"))
+                        }
+                    }
+                    let trimmed_dice_results = ParseNode::remove_n(&dice_results, count, removal_fn);
+
+                    Ok(trimmed_dice_results.iter().sum())
+                } else {
+                    return Err(format!("Expected remove's 2nd child to be an integer"))
+                }
+            }
+            _ => {
+                return Err(format!("Unexpected node"))
+            }
+        }
+    }
+
+    pub fn evaluate_as_dice(&self) -> Result<Vec<u32>, String> {
+        if self.entry != Terminal::Dice {
+            return Err(format!("Cannot evaluate {:?} as dice", self.entry))
+        }
+
+        if let Terminal::Integer(count) = self.children.get(0).expect("Expected dice to have two children").entry {
+            if let Terminal::Integer(size) = self.children.get(1).expect("Expected dice to have two children").entry {
+                let mut results = Vec::new();
+
+                for _ in 0..count {
+                    results.push(rand::thread_rng().gen_range(1..size))
+                }
+
+                Ok(results)
+            } else {
+                return Err(String::from("Expected right child of dice to be an integer"));
+            }
+        } else {
+            return Err(String::from("Expected left child of dice to be an integer"));
         }
     }
 }
@@ -252,8 +340,6 @@ pub fn print(tree: &ParseNode) -> String {
         }
     }
 }
-
-
 
 // #########
 // #TESTING#
